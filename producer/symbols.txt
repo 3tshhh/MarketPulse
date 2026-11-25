@@ -1,0 +1,43 @@
+# One Binance spot symbol per line. Lines starting with # are ignored.
+# Mix of large caps (low volatility) and small caps (high volatility) on purpose:
+# the anomaly detector must work per symbol, not with one global threshold.
+BTCUSDT
+ETHUSDT
+BNBUSDT
+SOLUSDT
+XRPUSDT
+DOGEUSDT
+ADAUSDT
+TRXUSDT
+AVAXUSDT
+LINKUSDT
+DOTUSDT
+LTCUSDT
+BCHUSDT
+UNIUSDT
+ATOMUSDT
+XLMUSDT
+ETCUSDT
+NEARUSDT
+APTUSDT
+ARBUSDT
+OPUSDT
+FILUSDT
+ICPUSDT
+INJUSDT
+SUIUSDT
+SEIUSDT
+TIAUSDT
+AAVEUSDT
+PEPEUSDT
+SHIBUSDT
+WIFUSDT
+FETUSDT
+RENDERUSDT
+HBARUSDT
+TONUSDT
+WLDUSDT
+BONKUSDT
+FLOKIUSDT
+ENAUSDT
+POLUSDT

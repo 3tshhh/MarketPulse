@@ -1,0 +1,25 @@
+# Large-machine profile (32 GB RAM, Docker/WSL memory >= 20 GB).
+# Enable:   copy compose.large.yml docker-compose.override.yml
+# Compose loads docker-compose.override.yml automatically on top of docker-compose.yml.
+# Disable:  delete docker-compose.override.yml. The base file always stays runnable on 24 GB.
+#
+# The streaming job keeps its 2 GB executor; the extra worker memory is room for the
+# batch jobs of steps 4 and 7 to run next to it.
+
+services:
+  spark-master:
+    mem_limit: 2500m
+
+  spark-worker:
+    environment:
+      SPARK_WORKER_CORES: "4"
+      SPARK_WORKER_MEMORY: 5g
+    mem_limit: 6g
+
+  hiveserver2:
+    environment:
+      SERVICE_OPTS: >-
+        -Xmx2560m -Duser.timezone=UTC
+        -Dhive.metastore.uris=thrift://hive-metastore:9083
+        -Dhive.local.time.zone=UTC
+    mem_limit: 3g

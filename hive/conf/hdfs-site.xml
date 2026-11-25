@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<configuration>
+  <!-- Replication is chosen by the writing client. Single DataNode -> 1. -->
+  <property><name>dfs.replication</name><value>1</value></property>
+</configuration>

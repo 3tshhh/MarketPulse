@@ -1,0 +1,9 @@
+# For a 32 GB machine. Copy to %UserProfile%\.wslconfig, then: wsl --shutdown
+# Windows keeps ~10 GB. Use with compose.large.yml (see README).
+[wsl2]
+memory=22GB
+swap=8GB
+processors=10
+
+[experimental]
+autoMemoryReclaim=gradual

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarketPulse label review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@700;800&family=Red+Hat+Text:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a calm lab bench: precise, quiet, nothing between the reviewer and the chart.
+   IDEA: an inspection queue; each event is a specimen card you stamp 1 or 0.
+   PICTURE: the event charts themselves, big, one per card.
+   COLOUR and TYPE: navy ground, white specimen panels, signal scale accents; Red Hat Display/Text.
+   LAYOUT: sticky control bar, then a single column of cards; stacks cleanly on phones. */
+:root{color-scheme:light dark;--bg:#0b1433;--panel:light-dark(#ffffff,#121c42);--ink:light-dark(#0b1433,#e9edfb);--soft:light-dark(#5a6386,#9aa5cc);--line:light-dark(#dfe3f0,#26325e);--yes:#2f9e8f;--no:#e8452c;--rev:#e0b92e;--acc:#4fc1c6;--top:#e9edfb}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--top);font:16px/1.55 "Red Hat Text",system-ui,sans-serif;overflow-x:clip}
+h1{font:800 clamp(30px,4vw,44px)/1.05 "Red Hat Display",sans-serif;margin:0 0 10px;text-wrap:balance}
+.band{padding:clamp(24px,4vw,48px) max(5vw,16px) 12px;max-width:1240px;margin:auto}
+.lede{color:#b9c2e6;max-width:68ch;margin:0}
+details{margin-top:14px;color:#cfd6f3;max-width:80ch}summary{cursor:pointer;font-weight:600;color:var(--acc)}
+details li{margin:4px 0}
+.bar{position:sticky;top:0;z-index:5;background:rgba(11,20,51,.94);backdrop-filter:blur(6px);border-bottom:1px solid #26325e}
+.bar .in{max-width:1240px;margin:auto;padding:10px max(5vw,16px);display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid #33407a;background:#16214d;color:var(--top);min-height:44px;padding:0 14px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.tabs button[aria-pressed=true]{background:var(--acc);color:#0b1433;border-color:var(--acc);font-weight:600}
+label.chk{display:flex;gap:8px;align-items:center;color:#cfd6f3;font-size:15px}
+label.chk input{width:20px;height:20px}
+.prog{margin-left:auto;color:#cfd6f3;font-size:15px;white-space:nowrap}
+.meter{height:6px;background:#26325e;border-radius:4px;overflow:hidden;width:140px;display:inline-block;vertical-align:middle;margin-left:8px}
+.meter i{display:block;height:100%;background:var(--acc)}
+main{max-width:1240px;margin:auto;padding:18px max(5vw,16px) 64px;display:grid;gap:18px}
+.card{background:var(--panel);color:var(--ink);border-radius:14px;padding:16px clamp(14px,2vw,22px);display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:18px;align-items:start;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.card.done{outline:2px solid var(--line)}
+.head{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.sym{font:700 22px/1.1 "Red Hat Display",sans-serif}
+.when{color:var(--soft);white-space:nowrap}
+.chip{font-size:13px;padding:2px 9px;border-radius:99px;background:light-dark(#eef1f8,#1c2858);color:var(--soft);white-space:nowrap}
+.chip.mkt{background:light-dark(#fff4d6,#3a3214);color:light-dark(#7a5a00,#f2d36b)}
+.fig img{width:100%;height:auto;display:block;border-radius:8px;background:#fff}
+.side{display:grid;gap:12px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font:700 20px/1.2 "Red Hat Display",sans-serif;white-space:nowrap}.stat span{font-size:13px;color:var(--soft)}
+.vote{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vote button{background:light-dark(#f3f5fb,#1a2552);color:var(--ink);border-color:var(--line);font-weight:600}
+.vote button.y[aria-pressed=true]{background:var(--yes);border-color:var(--yes);color:#fff}
+.vote button.n[aria-pressed=true]{background:var(--no);border-color:var(--no);color:#fff}
+input.note{font:inherit;font-size:16px;width:100%;min-height:44px;border-radius:10px;border:1px solid var(--line);background:light-dark(#fff,#0e1738);color:var(--ink);padding:8px 10px}
+.pre{font-size:14px;color:var(--soft);border-top:1px dashed var(--line);padding-top:10px}
+.pre b{color:var(--ink)}.tag{font-weight:700;padding:1px 8px;border-radius:6px;color:#fff}
+.t1{background:var(--yes)}.t0{background:var(--no)}.trev{background:var(--rev);color:#0b1433}
+.others{font-size:14px;color:var(--soft)}
+.foot{max-width:1240px;margin:auto;padding:0 max(5vw,16px) 48px;color:#b9c2e6}
+.foot .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+textarea{width:100%;min-height:120px;font:13px/1.4 ui-monospace,monospace;border-radius:10px;border:1px solid #33407a;background:#0e1738;color:#e9edfb;padding:10px}
+.status{font-size:14px;color:#cfd6f3}.empty{color:#cfd6f3;padding:20px 0}
+@media(max-width:760px){.card{grid-template-columns:minmax(0,1fr)}.prog{margin-left:0}}
+@media(prefers-reduced-motion:no-preference){.card{transition:outline-color .2s}}
+</style></head><body>
+<section class="band">
+<h1>Is this a real market anomaly?</h1>
+<p class="lede">96 events flagged in October 2025 (held out from tuning). Look at each chart, then mark it <b>1</b> (real anomaly) or <b>0</b> (not). Your votes save automatically and stay separate from your teammates'.</p>
+<details><summary>Labeling checklist</summary><ul>
+<li><b>1</b> only if all hold: the move in the orange 5-minute window clearly stands out from the surrounding hours; volume in those minutes is visibly elevated; it isn't a data artifact (a lone wick that snaps back on tiny volume).</li>
+<li>Typical <b>0</b>: a slow drift that just crossed the threshold, a move that's ordinary for a very volatile day, a one- or two-tick change on a micro-priced coin.</li>
+<li>Write a few words in the note for every 0, and for interesting 1s (market-wide drop, listing news).</li>
+<li>Blind mode hides the automatic pre-label until you vote, so it doesn't sway you. Keep it on.</li></ul></details>
+</section>
+<div class="bar"><div class="in">
+<div class="tabs" role="group" aria-label="Event set">
+<button data-f="z" aria-pressed="true">Coin events</button><button data-f="m" aria-pressed="false">Market bursts</button><button data-f="f" aria-pressed="false">Original rule</button></div>
+<label class="chk"><input type="checkbox" id="blind" checked> Blind mode</label>
+<label class="chk"><input type="checkbox" id="todo"> Only unreviewed</label>
+<div class="prog" id="prog"></div>
+</div></div>
+<main id="list"></main>
+<section class="foot">
+<p class="status" id="status">Connecting to shared storage…</p>
+<div class="row"><button id="dl">Download my labels (CSV)</button><button id="cp">Copy CSV</button></div>
+<p style="font-size:14px">Labels are also read directly from shared storage for the precision report, so downloading is optional.</p>
+<textarea id="csv" readonly hidden aria-label="CSV export"></textarea>
+</section>
+<script>
+{
+const EV=__DATA__;
+const NAMES={z:'label_z.csv',m:'label_market.csv',f:'label_fixed.csv'};
+let tab='z',mine={},others={},uid=null,docRef=null,canWrite=true,saving=Promise.resolve();
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+const fmt=(v,d)=>Number(v).toFixed(d);
+function preHtml(e){const c=e.pre==='1'?'t1':e.pre==='0'?'t0':'trev';const t=e.pre==='review'?'unsure':e.pre;
+ return `<div class="pre">Automatic pre-label: <span class="tag ${c}">${esc(t)}</span><br>${esc(e.why)}</div>`}
+function card(e){
+ const v=mine[e.k]||{},blind=$('blind').checked&&!v.l;
+ const oth=Object.entries(others).map(([n,l])=>l[e.k]&&l[e.k].l?`${esc(n)}: ${esc(l[e.k].l)}`:'').filter(Boolean).join(' · ');
+ return `<article class="card ${v.l?'done':''}" data-k="${e.k}">
+ <div class="head"><span class="sym">${esc(e.sym.replace('USDT',''))}</span><span class="when">${esc(e.t)} UTC</span>
+ <span class="chip ${e.scope==='market'?'mkt':''}">${e.scope==='market'?'market-wide · '+e.br+' coins':'single coin'}</span></div>
+ <div class="fig"><img alt="${esc(e.sym)} price and volume around ${esc(e.t)} UTC" src="data:image/png;base64,${e.img}"></div>
+ <div class="side">
+ <div class="stats"><div class="stat"><b>${e.chg>0?'+':''}${fmt(e.chg,2)}%</b><span>5-min move</span></div>
+ <div class="stat"><b>${fmt(Math.abs(e.z),1)}σ</b><span>vs its normal</span></div>
+ <div class="stat"><b>${fmt(e.vr,1)}×</b><span>volume</span></div></div>
+ <div class="vote"><button class="y" data-v="1" aria-pressed="${v.l==='1'}">1 · Real</button><button class="n" data-v="0" aria-pressed="${v.l==='0'}">0 · Not</button></div>
+ <input class="note" placeholder="Note (why 0, or what happened)" value="${esc(v.n||'')}" aria-label="Note">
+ ${oth?`<div class="others">Others: ${oth}</div>`:''}
+ ${blind?'':preHtml(e)}
+ </div></article>`}
+function render(){
+ const todo=$('todo').checked;
+ const rows=EV.filter(e=>e.k[0]===tab&&(!todo||!(mine[e.k]&&mine[e.k].l)));
+ $('list').innerHTML=rows.length?rows.map(card).join(''):'<p class="empty">Nothing left to review in this set.</p>';
+ progress()}
+function progress(){const n=EV.filter(e=>mine[e.k]&&mine[e.k].l).length;
+ $('prog').innerHTML=`You: ${n}/${EV.length} reviewed<span class="meter"><i style="width:${100*n/EV.length}%"></i></span>`}
+function save(){if(!docRef||!canWrite)return;const body={labels:mine,updated:new Date().toISOString()};
+ saving=saving.then(()=>docRef.set(body)).then(()=>{$('status').textContent='Saved to shared storage.'})
+ .catch(err=>{if(err&&err.code==='invalid_argument'){canWrite=false;$('status').textContent='You have view-only access, so your votes are kept in this browser only. Ask the owner for Contributor access.'}
+ else $('status').textContent='Could not save just now; your vote is kept in this page. It will save with your next change.'})}
+let noteTimer=null;
+$('list').addEventListener('click',ev=>{const b=ev.target.closest('.vote button');if(!b)return;
+ const k=b.closest('.card').dataset.k;mine[k]=Object.assign({},mine[k],{l:b.dataset.v});local();save();
+ const el=b.closest('.card');const e=EV.find(x=>x.k===k);el.outerHTML=card(e);progress()});
+$('list').addEventListener('input',ev=>{if(!ev.target.classList.contains('note'))return;
+ const k=ev.target.closest('.card').dataset.k;mine[k]=Object.assign({},mine[k],{n:ev.target.value});local();
+ clearTimeout(noteTimer);noteTimer=setTimeout(save,900)});
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.f;
+ document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));render();scrollTo({top:$('list').offsetTop-80})}));
+$('blind').addEventListener('change',render);$('todo').addEventListener('change',render);
+function local(){try{localStorage.setItem('mp-labels',JSON.stringify(mine))}catch(e){}}
+try{mine=JSON.parse(localStorage.getItem('mp-labels')||'{}')||{}}catch(e){mine={}}
+function csv(){const h='file,row,symbol,detected_minute_utc,scope,prelabel,label,notes';
+ return [h,...EV.map(e=>{const v=mine[e.k]||{};return [NAMES[e.k[0]],e.row,e.sym,e.t,e.scope,e.pre,v.l||'','"'+String(v.n||'').replace(/"/g,'""')+'"'].join(',')})].join('\n')}
+$('cp').addEventListener('click',async()=>{const t=$('csv');t.value=csv();t.hidden=false;t.select();
+ try{await navigator.clipboard.writeText(t.value);$('status').textContent='CSV copied.'}catch(e){$('status').textContent='Select the text below and copy it.'}});
+render();
+(async()=>{
+ const [db,user,dl]=await Promise.all([claude.use('db'),claude.use('user'),claude.use('downloads')]);
+ if(dl){$('dl').addEventListener('click',async()=>{try{await dl.save({filename:'labels_reviewed.csv',data:csv()})}catch(e){$('status').textContent='Download was not saved. Use Copy CSV instead.'}})}
+ else $('dl').hidden=true;
+ if(!db||!user){$('status').textContent='Shared storage is not available here; votes are kept in this browser. Use Copy CSV when you finish.';return}
+ uid=await user.id();
+ if(!uid){$('status').textContent='Sign in to save votes to shared storage. Until then they stay in this browser.';return}
+ docRef=db.collection('reviews').doc(uid);
+ const timer=setTimeout(()=>{$('status').textContent='Shared storage is slow to answer; your votes are kept in this page meanwhile.'},10000);
+ db.collection('reviews').onSnapshot(async snap=>{clearTimeout(timer);
+  const ids=[];const map={};
+  snap.docs.forEach(d=>{const b=d.data()||{};if(d.id===uid){const theirs=b.labels||{};
+    if(Object.keys(theirs).length){for(const k in theirs)if(!mine[k]||!mine[k].l)mine[k]=theirs[k]}
+   }else{ids.push(d.id);map[d.id]=b.labels||{}}});
+  let names={};try{names=await user.profiles(ids)}catch(e){}
+  others={};ids.forEach(i=>{others[(names[i]&&names[i].name)||'Teammate']=map[i]});
+  $('status').textContent=`Connected. ${ids.length} other reviewer${ids.length===1?'':'s'} so far.`;
+  if(!document.activeElement||!document.activeElement.classList.contains('note'))render();else progress()},
+  err=>{clearTimeout(timer);$('status').textContent='Shared storage stopped answering; votes are kept in this browser. Use Copy CSV.'});
+ if(Object.keys(mine).length)save();
+})();
+}
+</script></body></html>

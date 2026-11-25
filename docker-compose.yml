@@ -1,0 +1,332 @@
+# MarketPulse
+#   Step 1: kafka, kafka-init, producer
+#   Step 2: namenode, datanode, hdfs-init, spark-master, spark-worker, spark-candles
+#   Step 3: postgres, hive-metastore, hiveserver2, hive-init
+# Later: airflow, streamlit.
+#
+# Host ports: 29092 Kafka | 9870 HDFS UI | 8080 Spark master UI | 8081 Spark worker UI | 4040 candles job UI
+#             10000 HiveServer2 JDBC | 10002 HiveServer2 UI
+# (Airflow will go on 8088 later because 8080 is taken.)
+
+name: marketpulse
+
+x-spark: &spark-common
+  build: ./spark
+  image: marketpulse-spark:3.5.3
+  environment: &spark-env
+    SPARK_NO_DAEMONIZE: "true"
+    SPARK_DAEMON_MEMORY: 512m
+    LAKE_BASE: hdfs://namenode:8020/marketpulse
+    KAFKA_BOOTSTRAP: kafka:9092
+    TRADES_TOPIC: ${TRADES_TOPIC:-trades}
+    ANOMALIES_TOPIC: ${ANOMALIES_TOPIC:-anomalies}
+    BINANCE_REST_BASE: ${BINANCE_REST_BASE:-https://data-api.binance.vision}
+  volumes:
+    - ./spark/jobs:/opt/jobs:ro
+
+services:
+  # ---------------------------------------------------------------- step 1
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: kafka
+    hostname: kafka
+    # fresh named volume is root-owned; broker runs as non-root by default
+    user: "0:0"
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    mem_limit: 1g
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        K=/opt/kafka/bin/kafka-topics.sh
+        B=kafka:9092
+        $$K --bootstrap-server $$B --create --if-not-exists --topic ${TRADES_TOPIC:-trades} \
+            --partitions 3 --replication-factor 1 \
+            --config retention.ms=172800000 --config compression.type=producer
+        $$K --bootstrap-server $$B --create --if-not-exists --topic ${ANOMALIES_TOPIC:-anomalies} \
+            --partitions 1 --replication-factor 1 \
+            --config retention.ms=604800000
+        $$K --bootstrap-server $$B --describe --topic ${TRADES_TOPIC:-trades}
+        $$K --bootstrap-server $$B --describe --topic ${ANOMALIES_TOPIC:-anomalies}
+    restart: "no"
+
+  producer:
+    build: ./producer
+    container_name: producer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      TRADES_TOPIC: ${TRADES_TOPIC:-trades}
+      BINANCE_WS_BASE: ${BINANCE_WS_BASE:-wss://data-stream.binance.vision}
+      BINANCE_REST_BASE: ${BINANCE_REST_BASE:-https://data-api.binance.vision}
+      SYMBOLS_FILE: /app/symbols.txt
+      LOG_LEVEL: INFO
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- step 2: HDFS
+  namenode:
+    image: apache/hadoop:3.4.1
+    container_name: namenode
+    hostname: namenode
+    user: "0:0"   # same named-volume permission issue as kafka
+    command: ["hdfs", "namenode"]
+    ports:
+      - "9870:9870"
+    env_file: ./hadoop.env
+    environment:
+      # starter script formats the NameNode only if this dir does NOT exist yet (first run)
+      ENSURE_NAMENODE_DIR: /hadoop/dfs/name
+      HADOOP_HEAPSIZE_MAX: 512m
+    volumes:
+      - hdfs-name:/hadoop/dfs   # name dir is a subfolder -> absent on first run -> format
+    mem_limit: 1g
+    restart: unless-stopped
+
+  datanode:
+    image: apache/hadoop:3.4.1
+    container_name: datanode
+    hostname: datanode
+    user: "0:0"
+    command: ["hdfs", "datanode"]
+    env_file: ./hadoop.env
+    environment:
+      HADOOP_HEAPSIZE_MAX: 512m
+    volumes:
+      - hdfs-data:/hadoop/dfs
+    depends_on:
+      - namenode
+    mem_limit: 1g
+    restart: unless-stopped
+
+  hdfs-init:
+    image: apache/hadoop:3.4.1
+    container_name: hdfs-init
+    user: "0:0"
+    env_file: ./hadoop.env
+    depends_on:
+      - namenode
+      - datanode
+    # keep the image entrypoint (/opt/starter.sh): it turns hadoop.env into core-site/hdfs-site.xml
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        echo "waiting for NameNode to leave safe mode..."
+        until hdfs dfsadmin -safemode get 2>/dev/null | grep -q "OFF"; do sleep 3; done
+        hdfs dfs -mkdir -p /marketpulse/raw /marketpulse/candles /marketpulse/anomalies /marketpulse/_checkpoints
+        hdfs dfs -ls /marketpulse
+        hdfs dfsadmin -report | head -20
+    restart: "no"
+
+  # ---------------------------------------------------------------- step 2: Spark
+  spark-master:
+    <<: *spark-common
+    container_name: spark-master
+    hostname: spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master",
+              "--host", "spark-master", "--port", "7077", "--webui-port", "8080"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./spark/jobs:/opt/jobs:ro
+      - ./data/backtest:/opt/out        # backtest results land in the repo folder (git-ignored)
+    mem_limit: 1600m  # master daemon (512m) + room for a local-mode verify job (1g driver)
+    restart: unless-stopped
+
+  spark-worker:
+    <<: *spark-common
+    container_name: spark-worker
+    hostname: spark-worker
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker",
+              "spark://spark-master:7077", "--webui-port", "8081"]
+    environment:
+      <<: *spark-env
+      SPARK_WORKER_CORES: "3"
+      SPARK_WORKER_MEMORY: 2560m      # total memory executors may use
+      SPARK_WORKER_DIR: /tmp/spark-work
+    ports:
+      - "8081:8081"
+    depends_on:
+      - spark-master
+    mem_limit: 3500m                  # worker daemon + one 2g executor + overhead
+    restart: unless-stopped
+
+  spark-candles:
+    <<: *spark-common
+    container_name: spark-candles
+    hostname: spark-candles
+    # Optional overrides from .env (AD_* detector thresholds, ANOMALIES_PATH/TOPIC/CKPT for the smoke test).
+    # Unset variables fall back to the defaults in the code.
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      spark-worker:
+        condition: service_started
+      hdfs-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - --name
+      - marketpulse-candles
+      - --driver-memory
+      - 768m
+      - --conf
+      - spark.driver.host=spark-candles
+      - --conf
+      - spark.executor.memory=2g
+      - --conf
+      - spark.executor.cores=2
+      - --conf
+      - spark.cores.max=2
+      - /opt/jobs/candles_stream.py
+    ports:
+      - "4040:4040"
+    mem_limit: 1500m
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- step 3: Hive
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    hostname: postgres
+    environment:
+      POSTGRES_DB: metastore_db
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: ${HIVE_DB_PASSWORD:-hive_dev_pw}   # dev only
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 384m
+    restart: unless-stopped
+
+  hive-metastore:
+    build: ./hive
+    image: marketpulse-hive:4.0.1
+    container_name: hive-metastore
+    hostname: hive-metastore
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      TZ: UTC
+      # schematool -initOrUpgradeSchema runs on every start (idempotent).
+      # housekeeping + partition management = the metastore registers new dt/hr folders itself.
+      SERVICE_OPTS: >-
+        -Xmx512m -Duser.timezone=UTC
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db
+        -Djavax.jdo.option.ConnectionUserName=hive
+        -Djavax.jdo.option.ConnectionPassword=${HIVE_DB_PASSWORD:-hive_dev_pw}
+        -Dmetastore.housekeeping.threads.on=true
+        -Dmetastore.partition.management.task.frequency=120s
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 1g
+    restart: unless-stopped
+
+  hiveserver2:
+    build: ./hive                # same image as hive-metastore; build here too so Compose never tries to pull it
+    image: marketpulse-hive:4.0.1
+    container_name: hiveserver2
+    hostname: hiveserver2
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: hiveserver2
+      IS_RESUME: "true"            # skip schema init; the metastore owns the schema
+      HIVE_SERVER2_THRIFT_PORT: 10000
+      TZ: UTC
+      # Tez runs in local mode inside this JVM, so query memory comes out of this heap.
+      SERVICE_OPTS: >-
+        -Xmx1536m -Duser.timezone=UTC
+        -Dhive.metastore.uris=thrift://hive-metastore:9083
+        -Dhive.local.time.zone=UTC
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    volumes:
+      - ./hive/sql:/opt/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/10000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 2g
+    restart: unless-stopped
+
+  hive-init:
+    build: ./hive                # same image as hive-metastore; build here too so Compose never tries to pull it
+    image: marketpulse-hive:4.0.1
+    container_name: hive-init
+    depends_on:
+      hiveserver2:
+        condition: service_healthy
+      hdfs-init:
+        condition: service_completed_successfully
+    entrypoint: ["/opt/hive/bin/beeline"]
+    command: ["-u", "jdbc:hive2://hiveserver2:10000/default", "-n", "admin", "-f", "/opt/sql/ddl.sql"]
+    volumes:
+      - ./hive/sql:/opt/sql:ro
+    restart: "no"
+
+volumes:
+  kafka-data:
+  hdfs-name:
+  hdfs-data:
+  pg-data:
