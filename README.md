@@ -134,3 +134,14 @@ The real `anomalies` table, topic and checkpoint aren't touched; when you switch
    docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic anomalies_smoke
    ```
    Check the logs show `'rule': 'z_v2', 'vol_ratio': 8.0 ... output: hdfs://namenode:8020/marketpulse/anomalies`.
+
+## Step 5 — Dashboard
+```bash
+docker compose up -d --build streamlit
+docker compose logs -f streamlit
+```
+Open http://localhost:8501
+- **Live market**: all coins' 5- and 60-minute moves plus one coin's live chart, built straight from Kafka `trades` (the current minute is still forming). Anomaly markers come from Kafka `anomalies`.
+- **Anomaly feed**: single-coin events one by one, market-wide bursts grouped; each has a chart toggle.
+- **History**: Hive queries over candles_1m / anomaly_events for any stored day, with the SQL and run time shown.
+- **AI analyst**: placeholder for step 6.

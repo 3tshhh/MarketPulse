@@ -2,10 +2,11 @@
 #   Step 1: kafka, kafka-init, producer
 #   Step 2: namenode, datanode, hdfs-init, spark-master, spark-worker, spark-candles
 #   Step 3: postgres, hive-metastore, hiveserver2, hive-init
-# Later: airflow, streamlit.
+#   Step 5: streamlit (dashboard)
+# Later: airflow.
 #
 # Host ports: 29092 Kafka | 9870 HDFS UI | 8080 Spark master UI | 8081 Spark worker UI | 4040 candles job UI
-#             10000 HiveServer2 JDBC | 10002 HiveServer2 UI
+#             10000 HiveServer2 JDBC | 10002 HiveServer2 UI | 8501 dashboard
 # (Airflow will go on 8088 later because 8080 is taken.)
 
 name: marketpulse
@@ -324,6 +325,29 @@ services:
     volumes:
       - ./hive/sql:/opt/sql:ro
     restart: "no"
+
+  # ---------------------------------------------------------------- step 5: dashboard
+  streamlit:
+    build: ./dashboard
+    container_name: streamlit
+    depends_on:
+      kafka:
+        condition: service_healthy
+      hiveserver2:
+        condition: service_started     # live pages work without Hive; history pages wait for it
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      TRADES_TOPIC: ${TRADES_TOPIC:-trades}
+      ANOMALIES_TOPIC: ${ANOMALIES_TOPIC:-anomalies}
+      LIVE_WINDOW_MIN: "180"           # minutes of candles rebuilt from Kafka at start-up
+      HIVE_HOST: hiveserver2
+      HIVE_PORT: "10000"
+      HIVE_USER: analyst
+      TZ: UTC
+    ports:
+      - "8501:8501"
+    mem_limit: 768m
+    restart: unless-stopped
 
 volumes:
   kafka-data:

@@ -575,3 +575,69 @@ overlap: z_v2 catches 94/114 baseline events (82%); baseline catches 94/909 z_v2
 **Emerging finding (if confirmed):** most coin-scope zeros are the smallest moves (1.0–1.5%), which points to the 1% floor as the weak spot. Candidate z_v3: a floor of 1.5% for non-large-caps.
 
 Next: reviewer 1 re-checks the 17 zeros with notes; a second teammate labels independently (blind).
+
+### 4.11 Reviewer 1 after re-check (2026-11-25 19:12)
+Reviewer 1 re-checked the 17 zeros: 8 flipped to 1 (all the 10/10 crash-onset cards and BCH 10-17). The 9 remaining zeros, 7 with notes ("volume low", "slow rise", "volume low price up").
+| Set | Precision | 95% CI | w/o 10/10 | agreement w/ pre-label |
+|---|---|---|---|---|
+| **z_v2 coin events** | **36/40 = 90.0%** | 77–96% | 35/38 = 92.1% | 94% |
+| z_v2 market bursts | 12/16 = 75.0% | 51–90% | 10/14 = 71.4% | 75% |
+| original rule | 39/40 = 97.5% | 87–100% | 12/12 = 100% | 97% |
+
+**Findings:**
+1. **Every z_v2 rejection is a small move.** All 8 rejected z_v2 events are moves of 1.0–2.2%, 7 of them under 1.65%. Coin events by size: |move| 1–1.5% → 21/25 real; ≥ 1.5% → **15/15 real**. This confirms the 1% floor is the weak spot.
+2. **"Volume low" vs an 8–15x volume ratio:** the reviewer judges volume against the whole 6-hour chart, while the detector compares with the previous 60 min. After a very quiet hour, a modest burst is "8x normal" to the detector but unremarkable on a 6-hour view. Concrete z_v3 idea: a longer baseline (e.g. 6 h) for the volume ratio, or both 60 min and 6 h must be elevated.
+3. **Market bursts are the weakest (75%):** the zeros are small up-moves (1.1–2.2%, "slow rise") on days when several coins drifted up together. Breadth ≥ 8 catches broad drifts as well as shocks.
+4. **Precision vs coverage trade-off:** the original rule is more precise (97.5%) but fires about 0.7 times a day, mostly crashes. z_v2 is 90% precise at about 5.9 feed items/day and covers large caps and smaller moves. The original rule is almost all obvious crash events, so its precision is high by construction (28/40 are 10/10).
+5. FLOKI 10-10 22:48 (+11.6%, z = 2.0, original rule only) = 0: a big % move that is normal for that post-crash hour, the exact case the per-symbol z was designed to reject.
+
+**Caveats:** still one reviewer (no inter-rater agreement yet). The z_v3 ideas come from looking at the evaluation sample, so any z_v3 needs a **new** held-out labelled sample (e.g. 2026-09) before claiming its precision.
+
+### 4.12 Smoke test of the live write path: PASS (2026-11-25 17:13–17:17 UTC)
+Thresholds forced down (vol 1.5x, |z| 1.5, |ret| 0.05%, no volume floor), output redirected to `_smoke/` + topic `anomalies_smoke` + its own checkpoint:
+- `[anomalies] batch=1 candles=6223 new_events=81`, `batch=2 candles=1848 new_events=8`; `[ANOMALY]` lines with scope text ("part of a market-wide move: 17 coins in 10 min").
+- **HDFS:** partitioned parquet under `_smoke/anomalies/dt=…/hr=…` (2026-11-23 hr 18 → 2026-11-25 hr 4), replication 1, `_SUCCESS` marker.
+- **Kafka:** JSON messages with every field (`detected_minute` ISO-UTC, `scope`, `market_breadth`, `reason`, `rule_version` z_v2), key = symbol.
+- **Hive:** `CREATE EXTERNAL TABLE … LIKE anomalies` + MSCK, then `SELECT` returned rows with correct UTC times and reasons in **0.98 s**: a plain `SELECT … LIMIT` runs as a Hive fetch task, without Tez (useful for the chatbot: simple lookups are about 1 s, aggregations about 3 s).
+- The real `anomalies` table, topic and checkpoint were untouched.
+- Side note: after the restart the raw/candles queries caught up on a 9.6k-row backlog in one batch (1–2.7 s), which shows recovery works.
+
+### Step 4 status: DONE (detector live + write path verified + backtest + precision from reviewer 1). Open: second reviewer.
+
+Cleanup after the smoke test confirmed (19:34): `anomaly rule: {'rule': 'z_v2', 'vol_ratio': 8.0, ...} output: hdfs://namenode:8020/marketpulse/anomalies + topic anomalies`.
+
+---
+
+## 5. Step 5 — Streamlit dashboard
+
+### 5.1 What was built (2026-11-25)
+```
+dashboard/Dockerfile, requirements.txt   python 3.12, streamlit 1.40.1, plotly, confluent-kafka, pyhive[hive_pure_sasl]
+dashboard/app.py                         navigation, sidebar (time zone UTC/Cairo, live status)
+dashboard/lib/live.py                    Kafka background reader -> in-memory candles + anomalies
+dashboard/lib/hive.py                    one persistent, pre-warmed HiveServer2 connection
+dashboard/lib/charts.py                  candlestick + volume + anomaly markers
+dashboard/lib/fmt.py                     prices without scientific notation, $ volumes, %
+dashboard/views/live.py                  market board (all coins, 5 s refresh) + live coin chart
+dashboard/views/feed.py                  anomaly feed, market bursts grouped per 10 min
+dashboard/views/history.py               Hive: coin/day chart + anomalies, day summary, SQL + timing shown
+dashboard/views/analyst.py               placeholder (step 6)
+docker-compose.yml                       + streamlit (8501, 768 MB)
+```
+
+### 5.2 Design decisions
+| Decision | Why |
+|---|---|
+| **Hot path from Kafka, cold path from Hive** | Spark candles land 2–4 min late (watermark + append) and Hive aggregations take about 3 s; a live view needs the forming minute. Reading `trades` directly gives it with no extra service |
+| Live candles rebuilt in the dashboard from the last 180 min of `trades` (offsets_for_times) | No dependency on Hive for the live page; restart-safe; same open/close-by-agg_id logic as Spark, so the live chart matches candles_1m |
+| One reader thread per server (`st.cache_resource`), shared by all sessions | N browser tabs don't create N Kafka consumers |
+| Anomalies read from the start of the 7-day topic, deduped on (symbol, minute) | The detector is at-least-once (BUILD_LOG 4.3) |
+| Market-wide rows grouped per 10-min bucket in the feed | One market move = one card (BUILD_LOG 4.7) |
+| One persistent Hive connection, warmed at start, serialized with a lock, results cached 5 min | Tez session start costs about 7 s per connection (BUILD_LOG 3.8); HS2 runs one statement per connection |
+| SQL + run time shown under every history chart | Makes the Hive layer visible and honest in the demo |
+| Parameterized SQL (pyformat) even though inputs come from select boxes | Habit for step 6, where SQL comes from an LLM |
+| Prices formatted per magnitude (0.00000345, 60,032.23); volumes as $42.37M | Hive/Kafka give raw doubles (BUILD_LOG 3.8 display finding) |
+| Time zone switch UTC / Africa/Cairo, storage stays UTC | Users think in local time; data stays unambiguous |
+
+### 5.3 Results
+_Pending first run._
